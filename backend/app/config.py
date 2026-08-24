@@ -72,7 +72,5 @@ DEFAULT_SERVICE_FEE = _env_float("GOODWE_SERVICE_FEE", 1.50)
 CURRENCY = os.getenv("GOODWE_CURRENCY", "BRL")
 
 # --- API -------------------------------------------------------------------
-CORS_ORIGINS = os.getenv(
-    "GOODWE_CORS_ORIGINS",
-    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173",
-).split(",")
+# --- API -------------------------------------------------------------------
+CORS_ORIGINS = os.getenv("GOODWE_CORS_ORIGINS", "*").split(",")
