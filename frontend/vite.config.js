@@ -14,5 +14,5 @@ export default defineConfig({
       '/ws': { target, ws: true, changeOrigin: true },
     },
   },
-  build: { outDir: 'dist', sourcemap: false },
+  build: { outDir: 'dist', sourcemap: false,reportCompressedSize: false, chunkSizeWarningLimit: 1000,},
 })
