@@ -1,0 +1,4 @@
+# The simulator needs only a WebSocket client; everything else is stdlib.
+# If you already created backend/.venv you can just use that interpreter:
+#   backend/.venv/bin/python simulator/mock_esp32.py
+websockets==14.1
