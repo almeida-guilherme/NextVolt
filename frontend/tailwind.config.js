@@ -1,41 +1,31 @@
-/**
- * Tokens mirror `src/theme.js` (the single source of truth for chart colors).
- * Palette validated for the dark surface #1a1a19 — lightness band, chroma
- * floor, CVD separation, normal-vision floor and contrast all pass.
- */
+/** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        plane: '#0d0d0d',
-        surface: '#1a1a19',
-        raised: '#212120',
-        grid: '#2c2c2a',
-        baseline: '#383835',
+        plane: '#060B14',
+        surface: { DEFAULT: '#0D1420', 2: '#111827', 3: '#1A2333' },
         ink: {
-          primary: '#ffffff',
-          secondary: '#c3c2b7',
-          muted: '#898781',
+          primary: '#E2EAF4',
+          secondary: '#8BA0BB',
+          muted: '#4A6080',
         },
-        series: {
-          1: '#3987e5',
-          2: '#d95926',
-          3: '#199e70',
-        },
+        chrome: { grid: '#1E2D42', border2: '#253448' },
         status: {
-          good: '#0ca30c',
-          warning: '#fab219',
-          serious: '#ec835a',
-          critical: '#d03b3b',
+          good: '#10B981',
+          warning: '#F59E0B',
+          critical: '#EF4444',
+          info: '#00D4FF',
+          purple: '#A78BFA',
         },
-        track: '#184f95',
       },
       fontFamily: {
-        sans: ['system-ui', '-apple-system', 'Segoe UI', 'sans-serif'],
+        sans: ["'Space Grotesk'", 'sans-serif'],
+        mono: ["'JetBrains Mono'", 'monospace'],
       },
-      boxShadow: {
-        hairline: 'inset 0 0 0 1px rgba(255,255,255,0.10)',
+      animation: {
+        'pulse-slow': 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
       },
     },
   },
