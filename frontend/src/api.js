@@ -4,6 +4,13 @@
  */
 const BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
 
+// The live feed needs the backend origin *explicitly*: a static host (Vercel,
+// Netlify, GitHub Pages) serves the bundle from its own domain and cannot
+// proxy a WebSocket upgrade through a rewrite the way it proxies /api. Falling
+// back to window.location there produces a URL that resolves to index.html,
+// the upgrade fails, and the dashboard silently stops receiving snapshots.
+const WS_ORIGIN = (import.meta.env.VITE_WS_BASE || BASE).replace(/\/$/, '')
+
 export class ApiError extends Error {
   constructor(message, status) {
     super(message)
@@ -30,12 +37,24 @@ async function request(path, { method = 'GET', body } = {}) {
   return payload
 }
 
-/** WebSocket URL for the dashboard role, derived from the current origin. */
-export function telemetrySocketUrl() {
+/**
+ * Candidate WebSocket URLs for the dashboard role, best first.
+ *
+ * The same origin is tried first — correct in dev (Vite proxies /ws) and in
+ * the single-process deployment where FastAPI serves the bundle — then the
+ * configured backend origin, which is what a static host needs. Failing over
+ * costs one round trip and keeps the same build working in all three.
+ */
+export function telemetrySocketUrls() {
   const explicit = import.meta.env.VITE_WS_URL
-  if (explicit) return explicit
+  if (explicit) return [explicit]
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/ws/telemetry?role=dashboard`
+  const candidates = [`${protocol}//${window.location.host}/ws/telemetry?role=dashboard`]
+  if (WS_ORIGIN) {
+    candidates.push(`${WS_ORIGIN.replace(/^http/, 'ws')}/ws/telemetry?role=dashboard`)
+  }
+  return [...new Set(candidates)]
 }
 
 export const api = {

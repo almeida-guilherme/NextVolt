@@ -57,7 +57,7 @@ function Toasts({ items, onDismiss }) {
  * telemetry row are shared by every page.
  */
 export default function App() {
-  const { snapshot, series, connected } = useStationSocket()
+  const { snapshot, series, connected, refresh } = useStationSocket()
   const route = useHashRoute()
   const [history, setHistory] = useState(null)
   const [toasts, setToasts] = useState([])
@@ -87,12 +87,19 @@ export default function App() {
     refreshHistory()
   }, [refreshHistory])
 
-  /** Wrap every mutation: single busy flag, uniform error surface. */
+  /**
+   * Wrap every mutation: single busy flag, uniform error surface.
+   *
+   * The command only mutates state on the server, so pull the new snapshot
+   * before releasing the busy flag — the UI must never show the pre-command
+   * state after the button has re-enabled, even if the live feed is lagging.
+   */
   const run = useCallback(
     async (action, onSuccess) => {
       setBusy(true)
       try {
         const result = await action()
+        await refresh()
         onSuccess?.(result)
         return result
       } catch (error) {
@@ -102,7 +109,7 @@ export default function App() {
         setBusy(false)
       }
     },
-    [notify],
+    [notify, refresh],
   )
 
   const handleStart = (connectorId, driver) => {

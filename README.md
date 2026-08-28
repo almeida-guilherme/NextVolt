@@ -232,9 +232,41 @@ Every constant in `backend/app/config.py` has an environment override:
 | `GOODWE_PEAK_START` / `GOODWE_PEAK_END` | `18:00` / `21:00` | Peak window (local) |
 | `GOODWE_TIMEZONE` | `America/Sao_Paulo` | Clock used for time-of-use |
 | `GOODWE_DATABASE_URL` | `sqlite:///backend/goodwe_station.db` | Persistence |
+| `GOODWE_SIMULATOR` | `auto` | Built-in telemetry source: `auto` / `on` / `off` |
+| `GOODWE_SIMULATOR_SPEED` | `1` | Energy/SOC acceleration for the built-in one |
 
 The tariff and the power limit are also persisted in SQLite once changed from
 the UI, so they survive a restart.
+
+## Telemetry sources
+
+The controller only meters and bills while `station.online` is true, which
+means *something* has to be sending frames. Two things can:
+
+- `simulator/mock_esp32.py` — the real protocol over the wire, what you run on
+  a bench and what the ESP32 replaces one-for-one.
+- the built-in simulator in `backend/app/simulator.py` — the same physics fed
+  straight into `station.ingest()`, so a hosted deployment with no hardware
+  attached is not stuck at zero. On `auto` (the default) it stands down as soon
+  as a real station connects to `/ws/telemetry?role=station`, so it is safe to
+  leave enabled. Set `GOODWE_SIMULATOR=off` for a hardware-only deployment.
+
+## Split deployment (static frontend + hosted API)
+
+When the bundle is served from a different origin than the API — Vercel in
+front of Render, say — REST can go through a rewrite but the WebSocket cannot:
+static hosts do not proxy the upgrade. Point the dashboard at the backend
+origin so it can dial the feed directly:
+
+```
+# frontend/.env.production
+VITE_WS_BASE=https://your-api.onrender.com
+```
+
+The dashboard tries its own origin first and falls back to this one, so the
+same build still works in dev and in the single-process deployment below. If
+the socket cannot be established at all it polls `/api/state` every 2 s, which
+degrades the refresh rate but never freezes the UI.
 
 ## Single-process deployment
 

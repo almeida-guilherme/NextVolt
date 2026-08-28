@@ -72,5 +72,22 @@ DEFAULT_SERVICE_FEE = _env_float("GOODWE_SERVICE_FEE", 1.50)
 CURRENCY = os.getenv("GOODWE_CURRENCY", "BRL")
 
 # --- API -------------------------------------------------------------------
-# --- API -------------------------------------------------------------------
 CORS_ORIGINS = os.getenv("GOODWE_CORS_ORIGINS", "*").split(",")
+
+# --- Built-in station simulator --------------------------------------------
+# A hosted deployment has no ESP32 dialling `/ws/telemetry`, so `station.online`
+# never turns true: the controller freezes metering, pauses billing and every
+# reading on the dashboard sits at zero. This loop feeds the same frames
+# `simulator/mock_esp32.py` sends, straight into `station.ingest()`.
+#
+#   auto (default) — run only while no real station is connected
+#   on             — always run, even alongside hardware (bench testing)
+#   off            — never run
+SIMULATOR_MODE = os.getenv("GOODWE_SIMULATOR", "auto").strip().lower()
+SIMULATOR_INTERVAL_S = _env_float("GOODWE_SIMULATOR_INTERVAL_S", 0.2)
+# Energy/SOC time acceleration: 60 = one minute of charging per wall second.
+SIMULATOR_SPEED = _env_float("GOODWE_SIMULATOR_SPEED", 1.0)
+SIMULATOR_PV_PEAK_W = _env_float("GOODWE_SIMULATOR_PV_PEAK_W", 5200.0)
+SIMULATOR_HOUSE_LOAD_W = _env_float("GOODWE_SIMULATOR_HOUSE_LOAD_W", 550.0)
+SIMULATOR_CAPACITY_KWH = _env_float("GOODWE_SIMULATOR_CAPACITY_KWH", 60.0)
+SIMULATOR_START_SOC = _env_float("GOODWE_SIMULATOR_START_SOC", 22.0)

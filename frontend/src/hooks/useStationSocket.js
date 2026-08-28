@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, telemetrySocketUrl } from '../api'
+import { api, telemetrySocketUrls } from '../api'
 
 const MAX_POINTS = 300 // 5 minutes at the 1 Hz control-loop rate
 const RECONNECT_STEPS = [500, 1000, 2000, 4000, 8000]
+const POLL_INTERVAL_MS = 2000 // REST cadence while the socket is down
+const FAILOVER_DELAY_MS = 300 // pause before trying the next candidate URL
+// The control loop broadcasts at 1 Hz, so this many missed ticks means the
+// socket is open but not carrying the feed — a host that accepts the upgrade
+// without proxying it, or a connection that died without a FIN.
+const STALE_TIMEOUT_MS = 8000
 
 /** Reshape one broadcast snapshot into a single chart row. */
 function toChartRow(snapshot) {
@@ -25,17 +31,48 @@ function toChartRow(snapshot) {
  * Owns the WebSocket lifecycle (with backoff reconnect), the latest snapshot
  * and the rolling chart buffer. Also seeds that buffer from the persisted
  * telemetry samples so a page reload does not start from an empty chart.
+ *
+ * `/api/state` returns the exact same payload the socket pushes, so whenever
+ * the socket is not open we poll it instead. That keeps the dashboard live on
+ * hosts that refuse the WebSocket upgrade, and `refresh()` lets a command
+ * handler pull the new state immediately instead of waiting for a tick.
  */
 export function useStationSocket() {
   const [status, setStatus] = useState('connecting')
   const [snapshot, setSnapshot] = useState(null)
   const [series, setSeries] = useState([])
   const [lastMessageAt, setLastMessageAt] = useState(null)
+  // Flips once, on the first snapshot from any source. A plain `snapshot`
+  // check cannot drive the poll effect: it changes every tick, which would
+  // retrigger the effect and fire a fresh poll on each one.
+  const [hasData, setHasData] = useState(false)
 
   const socketRef = useRef(null)
   const timerRef = useRef(null)
   const attemptRef = useRef(0)
+  const candidateRef = useRef(0)
   const closedByUs = useRef(false)
+
+  /** Adopt one snapshot, wherever it came from (socket push or REST poll). */
+  const applySnapshot = useCallback((message) => {
+    if (!message || message.type !== 'state') return
+    setSnapshot(message)
+    setHasData(true) // no-op re-render once already true
+    setLastMessageAt(Date.now())
+    setSeries((current) => {
+      const next = [...current, toChartRow(message)]
+      return next.length > MAX_POINTS ? next.slice(next.length - MAX_POINTS) : next
+    })
+  }, [])
+
+  /** Pull the current state on demand — used right after a command lands. */
+  const refresh = useCallback(async () => {
+    try {
+      applySnapshot(await api.state())
+    } catch {
+      /* the socket or the next poll will catch up */
+    }
+  }, [applySnapshot])
 
   // --- seed the chart from history (once) --------------------------------
   useEffect(() => {
@@ -70,18 +107,30 @@ export function useStationSocket() {
     if (socketRef.current) return
     setStatus((current) => (current === 'open' ? current : 'connecting'))
 
+    const urls = telemetrySocketUrls()
+    // Opening is not enough: this URL only counts as working once it has
+    // actually delivered a snapshot.
+    let carriesFeed = false
+    let staleTimer = null
+
     let socket
     try {
-      socket = new WebSocket(telemetrySocketUrl())
+      socket = new WebSocket(urls[candidateRef.current % urls.length])
     } catch {
       scheduleReconnect()
       return
     }
     socketRef.current = socket
 
+    const armStaleTimer = () => {
+      if (staleTimer) clearTimeout(staleTimer)
+      staleTimer = setTimeout(() => socket.close(), STALE_TIMEOUT_MS)
+    }
+
     socket.onopen = () => {
       attemptRef.current = 0
       setStatus('open')
+      armStaleTimer()
     }
 
     socket.onmessage = (event) => {
@@ -91,34 +140,45 @@ export function useStationSocket() {
       } catch {
         return
       }
-      if (message.type !== 'state') return
-      setSnapshot(message)
-      setLastMessageAt(Date.now())
-      setSeries((current) => {
-        const next = [...current, toChartRow(message)]
-        return next.length > MAX_POINTS ? next.slice(next.length - MAX_POINTS) : next
-      })
+      if (message?.type === 'state') {
+        carriesFeed = true
+        armStaleTimer()
+      }
+      applySnapshot(message)
     }
 
     socket.onerror = () => setStatus((current) => (current === 'open' ? 'open' : 'error'))
 
     socket.onclose = () => {
+      if (staleTimer) clearTimeout(staleTimer)
       socketRef.current = null
       if (closedByUs.current) return
       setStatus('closed')
-      scheduleReconnect()
+      // This URL never carried a snapshot — it is not the feed (a static host
+      // answering the upgrade with index.html, say). Try the next candidate.
+      scheduleReconnect(!carriesFeed && urls.length > 1)
     }
 
-    function scheduleReconnect() {
+    function scheduleReconnect(tryNextCandidate = false) {
       if (closedByUs.current || timerRef.current) return
-      const delay = RECONNECT_STEPS[Math.min(attemptRef.current, RECONNECT_STEPS.length - 1)]
-      attemptRef.current += 1
+      let delay
+      if (tryNextCandidate && candidateRef.current + 1 < urls.length) {
+        // Fast failover, but only on the first pass through the list: once
+        // every candidate has been tried the normal backoff must take over so
+        // an unreachable backend is not hammered every 300 ms.
+        candidateRef.current += 1
+        delay = FAILOVER_DELAY_MS
+      } else {
+        if (tryNextCandidate) candidateRef.current += 1
+        delay = RECONNECT_STEPS[Math.min(attemptRef.current, RECONNECT_STEPS.length - 1)]
+        attemptRef.current += 1
+      }
       timerRef.current = setTimeout(() => {
         timerRef.current = null
         connect()
       }, delay)
     }
-  }, [])
+  }, [applySnapshot])
 
   useEffect(() => {
     closedByUs.current = false
@@ -132,20 +192,36 @@ export function useStationSocket() {
     }
   }, [connect])
 
-  // Cold-start fallback: if the socket cannot be established, still show data.
+  // --- REST fallback -----------------------------------------------------
+  // Runs on a cold start (first paint before the socket opens) and for as long
+  // as the socket stays down. Without it a blocked upgrade freezes the whole
+  // dashboard: commands reach the API but their effect is never rendered.
   useEffect(() => {
-    if (snapshot || status === 'open') return
-    const id = setTimeout(() => {
-      api.state().then(setSnapshot).catch(() => {})
-    }, 1200)
-    return () => clearTimeout(id)
-  }, [snapshot, status])
+    // `hasData` keeps polling through a socket that opened but has not
+    // delivered anything yet, so the first paint never waits on the watchdog.
+    if (status === 'open' && hasData) return undefined
+    let cancelled = false
+    const poll = () => {
+      api
+        .state()
+        .then((state) => {
+          if (!cancelled) applySnapshot(state)
+        })
+        .catch(() => {})
+    }
+    poll()
+    const id = setInterval(poll, POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [status, hasData, applySnapshot])
 
   const connected = status === 'open'
   const stationOnline = Boolean(snapshot?.station?.online)
 
   return useMemo(
-    () => ({ status, connected, stationOnline, snapshot, series, lastMessageAt }),
-    [status, connected, stationOnline, snapshot, series, lastMessageAt],
+    () => ({ status, connected, stationOnline, snapshot, series, lastMessageAt, refresh }),
+    [status, connected, stationOnline, snapshot, series, lastMessageAt, refresh],
   )
 }

@@ -30,21 +30,16 @@ export default function StationHeader({ snapshot, connected, route, onResetOverl
       <div className="mx-auto max-w-[1400px] px-4 sm:px-6">
         <div className="flex flex-col gap-3 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
-            <span
-              className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-xl"
-              style={{ border: `1px solid ${chrome.border}` }}
-            >
-              <img
-                src="/newIcon.jpeg"
-                alt=""
-                className="h-full w-full object-cover"
-                width={40}
-                height={40}
-              />
-            </span>
-            <h1 className="truncate text-base font-semibold leading-tight text-ink-primary">
-              NextVolt
-            </h1>
+            {/* The logo already carries the wordmark, so the image is decorative
+                and the heading stays in the DOM for assistive tech only. */}
+            <img
+              src="/nextvolt-logo.png"
+              alt=""
+              className="h-10 w-auto shrink-0 sm:h-12"
+              width={885}
+              height={365}
+            />
+            <h1 className="sr-only">NextVolt</h1>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">

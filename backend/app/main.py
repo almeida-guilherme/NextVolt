@@ -27,6 +27,7 @@ from .schemas import (
     StopSessionRequest,
     TariffRequest,
 )
+from .simulator import simulator
 from .station_state import station
 from .ws_manager import Role, manager
 
@@ -41,6 +42,7 @@ async def lifespan(_app: FastAPI):
     init_db()
     await controller.bootstrap()
     controller.start()
+    simulator.start()
     logger.info(
         "GoodWe station controller ready — %d connectors, limit %.0f W",
         len(station.connectors),
@@ -49,6 +51,7 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
+        await simulator.stop()
         await controller.stop()
 
 
@@ -83,6 +86,7 @@ async def health() -> dict:
         "tick": station.tick,
         "dashboards": manager.count(Role.DASHBOARD),
         "stations": manager.count(Role.STATION),
+        "simulator": {"mode": config.SIMULATOR_MODE, "emitting": simulator.enabled and simulator.should_emit},
     }
 
 
