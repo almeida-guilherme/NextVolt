@@ -46,6 +46,11 @@ export function useStationSocket() {
   // check cannot drive the poll effect: it changes every tick, which would
   // retrigger the effect and fire a fresh poll on each one.
   const [hasData, setHasData] = useState(false)
+  // Whether each transport is actually delivering. Tracked separately because
+  // "socket is open" and "socket is feeding us" are not the same thing, and
+  // the badge must not claim a live link when the data comes from polling.
+  const [socketFeeding, setSocketFeeding] = useState(false)
+  const [pollHealthy, setPollHealthy] = useState(true)
 
   const socketRef = useRef(null)
   const timerRef = useRef(null)
@@ -142,6 +147,7 @@ export function useStationSocket() {
       }
       if (message?.type === 'state') {
         carriesFeed = true
+        setSocketFeeding(true)
         armStaleTimer()
       }
       applySnapshot(message)
@@ -152,6 +158,7 @@ export function useStationSocket() {
     socket.onclose = () => {
       if (staleTimer) clearTimeout(staleTimer)
       socketRef.current = null
+      setSocketFeeding(false)
       if (closedByUs.current) return
       setStatus('closed')
       // This URL never carried a snapshot — it is not the feed (a static host
@@ -205,9 +212,13 @@ export function useStationSocket() {
       api
         .state()
         .then((state) => {
-          if (!cancelled) applySnapshot(state)
+          if (cancelled) return
+          applySnapshot(state)
+          setPollHealthy(true)
         })
-        .catch(() => {})
+        .catch(() => {
+          if (!cancelled) setPollHealthy(false)
+        })
     }
     poll()
     const id = setInterval(poll, POLL_INTERVAL_MS)
@@ -217,11 +228,15 @@ export function useStationSocket() {
     }
   }, [status, hasData, applySnapshot])
 
-  const connected = status === 'open'
+  // How the dashboard is being fed right now. `polling` is a degraded but
+  // working state — slower refresh, same data — and the operator should be
+  // able to tell it apart from having no feed at all.
+  const feed = socketFeeding ? 'live' : hasData && pollHealthy ? 'polling' : 'offline'
+  const connected = feed === 'live'
   const stationOnline = Boolean(snapshot?.station?.online)
 
   return useMemo(
-    () => ({ status, connected, stationOnline, snapshot, series, lastMessageAt, refresh }),
-    [status, connected, stationOnline, snapshot, series, lastMessageAt, refresh],
+    () => ({ status, feed, connected, stationOnline, snapshot, series, lastMessageAt, refresh }),
+    [status, feed, connected, stationOnline, snapshot, series, lastMessageAt, refresh],
   )
 }

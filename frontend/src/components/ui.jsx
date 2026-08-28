@@ -131,9 +131,10 @@ export function Meter({
 }
 
 /** Status pill: color + text, never color alone. */
-export function Badge({ color, children, icon: Icon, className = '' }) {
+export function Badge({ color, children, icon: Icon, className = '', title }) {
   return (
     <span
+      title={title}
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${className}`}
       style={{ backgroundColor: `${color}22`, color: ink.primary, border: `1px solid ${color}66` }}
     >

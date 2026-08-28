@@ -57,7 +57,7 @@ function Toasts({ items, onDismiss }) {
  * telemetry row are shared by every page.
  */
 export default function App() {
-  const { snapshot, series, connected, refresh } = useStationSocket()
+  const { snapshot, series, feed, refresh } = useStationSocket()
   const route = useHashRoute()
   const [history, setHistory] = useState(null)
   const [toasts, setToasts] = useState([])
@@ -208,7 +208,7 @@ export default function App() {
     <div className="min-h-screen bg-plane">
       <StationHeader
         snapshot={snapshot}
-        connected={connected}
+        feed={feed}
         route={route}
         onResetOverload={handleReset}
         busy={busy}
@@ -251,7 +251,7 @@ export default function App() {
           </span>
           <span>
             {snapshot.station?.frames_received || 0} telemetry frames · control loop{' '}
-            {connected ? 'streaming' : 'offline'}
+            {feed === 'live' ? 'streaming' : feed === 'polling' ? 'polled' : 'offline'}
           </span>
         </footer>
       </main>

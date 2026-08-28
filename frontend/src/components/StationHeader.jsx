@@ -1,25 +1,51 @@
 import React from 'react'
-import { Activity, AlertTriangle, Sun, Wifi, WifiOff } from 'lucide-react'
+import { Activity, AlertTriangle, RefreshCw, Sun, Wifi, WifiOff } from 'lucide-react'
 import { chrome, seriesColors, status } from '../theme'
 import { clockTime, countdown, money } from '../format'
 import { NAV } from '../routes'
 import { Badge, Button } from './ui'
 
 /**
+ * How the dashboard is being fed. `polling` matters on its own: the numbers on
+ * screen are still current, just refreshed over REST every couple of seconds
+ * instead of pushed at the control-loop rate — very different from no feed.
+ */
+const FEED_BADGE = {
+  live: {
+    label: 'Connected',
+    icon: Wifi,
+    tone: 'good',
+    hint: 'Live WebSocket feed at the control-loop rate',
+  },
+  polling: {
+    label: 'Polling',
+    icon: RefreshCw,
+    tone: 'warning',
+    hint: 'WebSocket unavailable — refreshing over REST every 2 s',
+  },
+  offline: {
+    label: 'Disconnected',
+    icon: WifiOff,
+    tone: 'critical',
+    hint: 'No feed: neither the WebSocket nor the REST fallback is answering',
+  },
+}
+
+/**
  * Shell header, present on every page: brand, station status, and the page nav.
  *
- * Live connection status is deliberately two-part: the browser's WebSocket link
- * and the station's own telemetry heartbeat can fail independently, and the
+ * Live connection status is deliberately two-part: the browser's link to the
+ * API and the station's own telemetry heartbeat can fail independently, and the
  * operator needs to know which one broke.
  */
-export default function StationHeader({ snapshot, connected, route, onResetOverload, busy }) {
+export default function StationHeader({ snapshot, feed, route, onResetOverload, busy }) {
   const station = snapshot?.station
   const tariff = snapshot?.tariff
   const site = snapshot?.site
   const overloaded = Boolean(snapshot?.limits?.overload_latched)
   const stationOnline = Boolean(station?.online)
 
-  const linkColor = connected ? status.good : status.critical
+  const link = FEED_BADGE[feed] || FEED_BADGE.offline
   const meterColor = stationOnline ? status.good : status.warning
 
   return (
@@ -43,8 +69,8 @@ export default function StationHeader({ snapshot, connected, route, onResetOverl
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge color={linkColor} icon={connected ? Wifi : WifiOff}>
-              {connected ? 'Connected' : 'Disconnected'}
+            <Badge color={status[link.tone]} icon={link.icon} title={link.hint}>
+              {link.label}
             </Badge>
             <Badge color={meterColor} icon={Activity}>
               {stationOnline ? 'Meter live' : 'Meter offline'}

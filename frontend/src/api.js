@@ -37,24 +37,42 @@ async function request(path, { method = 'GET', body } = {}) {
   return payload
 }
 
+/** A candidate is only usable if the browser can actually parse it. */
+function isUsableWsUrl(candidate) {
+  try {
+    const { protocol } = new URL(candidate)
+    return protocol === 'ws:' || protocol === 'wss:'
+  } catch {
+    return false
+  }
+}
+
 /**
  * Candidate WebSocket URLs for the dashboard role, best first.
  *
- * The same origin is tried first — correct in dev (Vite proxies /ws) and in
- * the single-process deployment where FastAPI serves the bundle — then the
- * configured backend origin, which is what a static host needs. Failing over
- * costs one round trip and keeps the same build working in all three.
+ * An explicit VITE_WS_URL wins, then the same origin — correct in dev (Vite
+ * proxies /ws) and in the single-process deployment where FastAPI serves the
+ * bundle — then the configured backend origin, which is what a static host
+ * needs. Failing over costs one round trip and keeps the same build working
+ * in all three.
+ *
+ * Malformed candidates are dropped rather than tried: a bad value here (a URL
+ * pasted as a Markdown link, a stray quote) makes `new WebSocket()` throw on
+ * every attempt, and without this filter an override would pin the dashboard
+ * to a URL that can never connect instead of falling back to one that works.
  */
 export function telemetrySocketUrls() {
-  const explicit = import.meta.env.VITE_WS_URL
-  if (explicit) return [explicit]
-
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const candidates = [`${protocol}//${window.location.host}/ws/telemetry?role=dashboard`]
+  const candidates = []
+
+  const explicit = import.meta.env.VITE_WS_URL
+  if (explicit) candidates.push(explicit)
+  candidates.push(`${protocol}//${window.location.host}/ws/telemetry?role=dashboard`)
   if (WS_ORIGIN) {
     candidates.push(`${WS_ORIGIN.replace(/^http/, 'ws')}/ws/telemetry?role=dashboard`)
   }
-  return [...new Set(candidates)]
+
+  return [...new Set(candidates.filter(isUsableWsUrl))]
 }
 
 export const api = {
