@@ -1,6 +1,7 @@
 /**
  * REST client. Same-origin relative paths: in dev the Vite proxy forwards
- * /api and /ws to FastAPI, in production FastAPI serves the built bundle.
+ * /api and /ws to FastAPI; on Vercel the /api rewrite in vercel.json forwards
+ * to the backend; in the single-process deployment FastAPI serves the bundle.
  */
 const BASE = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '')
 
